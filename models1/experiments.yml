@@ -1,0 +1,7 @@
+# File paths
+out: /path/to/folder/for/output/
+perc_out: /path/to/folder/for/output/for-the-percentage-splits/
+datadir: /path/to/MIMIC3/files/mimic-iii-clinical-database-1.4_compressed
+
+# Experiments to perform (see experiments.py for the list of possibilities)
+experiments: [percs]

@@ -1,40 +1,33 @@
-# Prediction of ICU Readmissions Using Data at Patient Discharge using MIMICIII Database  
+# Machine Learning in the ICU: Blocking factors and quantified needs
 - - -  
 
-By using this code repository, you can replicate our work. If you are using any part of this code repository, we would appreciate if you cite our paper as follows:   
+We are releasing this repository to make it possible to replicate our work, and in case it is useful for further work in this area. If you are using any part of this code repository that we have added to, we would appreciate if you cite our paper: (reference to follow afer review)
 
-> *A. Pakbin, P. Rafi, N. Hurley, W. Schulz, M. Harlan Krumholz and J. Bobak Mortazavi, "Prediction of ICU Readmissions Using Data at Patient Discharge," 2018 40th Annual International Conference of the IEEE Engineering in Medicine and Biology Society (EMBC), Honolulu, HI, 2018, pp. 4932-4935.*  
+This repository is released under an MIT license. It builds on a previous repository that was also released under an MIT license which can be found [here](https://github.com/apakbin94/ICU72hReadmissionMIMICIII). If you use any of the code from the underlying repository, you should also reference the paper associated with that repository (see the file *original_README.md*).
 
-### Data
-In order to prepare the dataset, you require the access to the [MIMIC-III database](https://mimic.physionet.org/). Then, you need to set up a PostgreSQL database server using steps specified in the MIMIC-III documentation for [windows](https://mimic.physionet.org/tutorials/install-mimic-locally-windows/) or [Unix/Mac](https://mimic.physionet.org/tutorials/install-mimic-locally-ubuntu/) machines.  Our script also curates features from severity-score views[sapsii, sofa, sirs, lods, apsiii, oasis]. Please ensure to add MIMIC-III concepts as specified at the [link](https://github.com/MIT-LCP/mimic-code/tree/master/concepts/severityscores). 
 
-## Phase 1: Data Extraction (SQL, Python)
-### Steps to generate required datasets  
+## Running experiments
 
-1. Clone the repository
+1. Establish an appropriate conda environment (and then activate it):
 
-       git clone https://github.com/Erakhsha/ICU72hReadmissionMIMICIII  
+       conda create --name some_name --file conda/my_conda_env.yml
+       conda activate some_name
 
-2. Copy MIMIC-III compressed csv files to the *data/* directory  
 
-3. Execute PostgreSQL scripts available in the */DBScripts* directory on database server. These scripts create required views in the database.
+2. Prepare *df_MASTER_DATA.csv*:
 
-       psql 'dbname=mimic user=xxxx password=xxxx options=--search_path=mimiciii' -f getFeatures_from_labevents.sql  
-	   psql 'dbname=mimic user=xxxx password=xxxx options=--search_path=mimiciii' -f getFeatures_from_chartevents.sql  
+Follow the steps for Phase 1 from *original_README.md*
 
-4. configure database connection strings in the *resources/config.yml* file.  
 
-5. Execute following script to generate datasets
+3. Run the experiments from this repository:
 
-       python generate_datasets/main.py   
+The top level script and configuration file in this repository are:
 
-## Phase 2: XGBoost (Python)
-The second phase trains XGBoost in Python and saves results which include, but are not limited to: ROC plots for each fold and the actual probabilities for each person and the feature ranking among all of the folds for each specific label.  
-### Execute scripts in *model1*  
-Exucute fold_saver.py located below. There is a small block at the beginning of the script which needs to be set. Please note that for some functionalities in phase 3, you have to set 'save_folds_data' parameter equal to true so functions such as 'Calibration Plot' can work.  
+       models1/experiments.py
+       models1/experiments.yml
 
-       python models1/fold_saver.py 
-	   
-## Phase 3:  LR (and XGBoost) and Calibration Plots (R)
+Go to the *models1/* directory. First fill in the *experiments.yml* file appropriately and then launch the experiments with:
 
-The third phase trains LR (and XGBoost) models and calibration plots for models trained in second and third phase. It should be noted that this part is written in R. You need to run scripts located in *models2* folder.  
+       python experiments.py
+
+
