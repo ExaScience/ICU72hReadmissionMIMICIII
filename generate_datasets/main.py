@@ -2,7 +2,7 @@
 """
 Created on Thu Feb 01 14:23:18 2018
 
-@author: rafip
+@authors: rafip, T.J.Ashby
 """
 
 import yaml
@@ -13,6 +13,9 @@ from utils import SQLConnection, clean_nan_columns, get_features_from_labevents,
 
 pd.set_option('mode.chained_assignment', None)
 
+#
+# Uses gzipped files only (no SQL)
+#
 def getfeaturesFromStaticTables(config):
     print('generating features from non-events tables...')
 
@@ -50,25 +53,79 @@ def getfeaturesFromStaticTables(config):
     pivoted_procedures = pivoted_procedures.reset_index()
 
     # get relevant data from PROCEDURES_ICD table
+
+    #
+    # The original code has a subtle bug here: it treats the ICD code column as
+    # an integer, which leads to the dropping of semantically important leading
+    # zeros, which further leads to name clashes in the code name space. 
+    # - There is still (?) some ambiguity in the codes, but I'm assuming that
+    # _trailing_ zeros do get dropped; seems the most sensible
+    #   
+    # I'm trying to fix this by forcing the code values to be read as
+    # strings. This should work for the code that uses vector embeddings, but
+    # the original code that does one-hot still converts things into integers
+    # and so will still be affected by this issue.
+    #
+
     print('\nImporting data from PROCEDURES_ICD...')
     path_procedures = join(data_dir, 'PROCEDURES_ICD.csv.gz')
-    df_ICD9 = pd.read_csv(path_procedures)
+    df_ICD9 = pd.read_csv(path_procedures,
+                          dtype={"ROW_ID": np.int32,
+                                 "SUBJECT_ID": np.int32,
+                                 "HADM_ID": np.int32,
+                                 "SEQ_NUM": np.int32,
+                                 "ICD9_CODE": str}
+    )
+
     trimmed_ICD9 = df_ICD9[['HADM_ID','SEQ_NUM','ICD9_CODE']]
     pivoted_ICD9 = trimmed_ICD9.pivot_table(index='HADM_ID', columns='ICD9_CODE', values='SEQ_NUM', fill_value=0).astype(
         'bool').astype('int')
     pivoted_ICD9.columns = ['ICD9_' + str(col_name) for col_name in pivoted_ICD9.columns]
     pivoted_ICD9 = pivoted_ICD9.reset_index()
 
+    #
     # merging dataframes
+    #
     print('\nMerging data from ADMISSIONS, ICUSTAYS, PATIENTS, PROCEDUREEVENTS_MV, PROCEDURES_ICD...')
     df_merged = trimmed_icustays.merge(trimmed_admissions, on='HADM_ID', how='left')
     df_merged = df_merged.merge(trimmed_patients, on='SUBJECT_ID', how='left')
     df_merged = df_merged.merge(pivoted_procedures, on='ICUSTAY_ID', how='left')
     df_merged = df_merged.merge(pivoted_procedures, on='ICUSTAY_ID',  how='left')
     df_merged = df_merged.merge(pivoted_ICD9, on='HADM_ID',how='left')
-
+    
+    #
     # Calculating age and median correcting deidentified ages of ovelrly aged people
-    ages = (df_merged['INTIME'].astype('datetime64[ns]') - df_merged['DOB'].astype('datetime64[ns]')).dt.days / 365
+    #
+
+    #
+    # There is an integer overflow bug if the original code is used with some of
+    # the later versions of pandas. This may not have been an issue with earlier
+    # versions of pandas (I haven't checked), but the version I use needed to be
+    # re-written to avoid the overflow.
+    #
+    # Original code:
+    #ages = (df_merged['INTIME'].astype('datetime64[ns]') - df_merged['DOB'].astype('datetime64[ns]')).dt.days / 365
+    #
+    # New version to avoid overflow:
+    s_intime = df_merged['INTIME'].astype('datetime64[s]')
+    s_dob = df_merged['DOB'].astype('datetime64[s]')
+    s_subtract = s_intime.copy()
+
+    patchCount = 0
+    for k in s_subtract.keys():
+        this_in = s_intime[k]
+        this_dob = s_dob[k]
+        if this_in.year - this_dob.year > 150:
+            print("Index {}: Patched DOB to unknown-old (i.e. anonymised >89); age will be 300 (year diff was {})".format(k, this_in.year - this_dob.year))
+            patchCount = patchCount + 1
+            s_subtract[k] = 300 * 365
+        else:
+            s_subtract[k] = (this_in - this_dob).days
+
+    print("Patched {} dodgy DOB entries".format(patchCount))
+    ages = (s_subtract) / 365
+    # (end of overflow bug fix)
+
     df_merged['AGE'] = [age if age >= 0 else 91.4 for age in ages]
     df_merged.drop(['DOB'], axis=1, inplace=True)
     # removing minors from the data
@@ -87,6 +144,9 @@ def getfeaturesFromStaticTables(config):
     return df_merged
 
 
+#
+# Accesses the Postgres DB
+#
 def getfeaturesFromEventsTables(config):
     conn = SQLConnection(config)
     
@@ -120,6 +180,11 @@ def getfeaturesFromEventsTables(config):
     df_events_tables = pd.merge(df_labs_features, df_chart_features, how='left', on='icustay_id')
     return df_events_tables
 
+
+
+#
+# Accesses the Postgres DB
+#
 def getfeaturesFromSeverityScoreConcepts(config):
     """
     The scripts generate features from MIMIC-III concepts tables for severity scores
@@ -185,6 +250,11 @@ def getfeaturesFromSeverityScoreConcepts(config):
 
     return df_severity_scores
 
+
+#
+# Add a 'Short LOS' flag for stays < median length
+# Replace existing LOS with log(#days), based on a recalculation 
+#
 def addLOSFeature(df_MASTER_DATA):
     # remove already existing LOS features
     df_MASTER_DATA.drop(['LOS'], axis=1, inplace=True)
@@ -219,6 +289,10 @@ def addLOSFeature(df_MASTER_DATA):
     return df_MASTER_DATA
 
 
+#
+# Adds a bunch of columns that make up the possible prediction target classes
+# The columns are binary flags
+#
 def addTargetFeatures(df_MASTER_DATA):
     """
     the function adds target labels to the dataset
@@ -276,16 +350,28 @@ def addTargetFeatures(df_MASTER_DATA):
 
 
 if __name__ == "__main__":
+
+    #
+    # Load the data
+    # - From a mixture of gzipped files and SQL DB accesses
+    #
     config = yaml.safe_load(open("../resources/config.yml"))
     df_static_tables = getfeaturesFromStaticTables(config=config)
     df_events_tables = getfeaturesFromEventsTables(config=config)
     df_severity_scores = getfeaturesFromSeverityScoreConcepts(config=config)
 
+    #
+    # Merge the loaded data
+    #
     print('\n Merging static features, events features and severity scores')
     df_MASTER_DATA = pd.merge(df_static_tables,df_events_tables, how='left', left_on='ICUSTAY_ID', right_on ='icustay_id', left_index=True, right_index=True)
     df_MASTER_DATA.drop(['icustay_id'], axis=1, inplace=True)
     df_MASTER_DATA = pd.merge(df_MASTER_DATA, df_severity_scores, how='left', left_on='ICUSTAY_ID', right_on='icustay_id')
     df_MASTER_DATA.drop(['icustay_id'], axis=1, inplace=True)
+
+    #
+    # Adapt the LOS and add Is_Short_LOS flag
+    #
     df_MASTER_DATA = addLOSFeature(df_MASTER_DATA)
 
     #Cleaning up outliers
@@ -340,6 +426,10 @@ if __name__ == "__main__":
         lambda x: [None if y > 500 or y < 30 else y for y in x])
 
     df_MASTER_DATA = addTargetFeatures(df_MASTER_DATA)
+
+    #
+    # Dump the processed data to CSV
+    #
     data_dir = config['data_dir']
     datasetPath = join(data_dir, 'df_MASTER_DATA.csv')
     df_MASTER_DATA.to_csv(datasetPath, index=False)

@@ -2,7 +2,7 @@
 """
 Created on Thu Jan 18 15:04:50 2018
 
-@author: a.pakbin
+@authors: a.pakbin, T.J. Ashby
 """
 import numpy as np
 from copy import copy
@@ -148,6 +148,12 @@ def numerical_imputer(X, training_mean=None):
         imputed=X.fillna(training_mean)
         return imputed
     
+
+#
+# X_train and X_test are data-frames of MIMIC3 data with certain columns dropped
+# - the numerical imputation is straightforward: any missing values are replaced 
+#   with the mean value for that column
+#
 def train_test_imputer(X_train, X_test, categorical_column_names):
     
     [X_TRAIN_CAT_IMPUTED, NAMES, DISTS]=categorical_imputer(X_train, categorical_column_names)
@@ -167,7 +173,11 @@ def auc_calculator(model, X, y, num_of_folds):
    
         model.fit(X_train, y_train)
         predictions=model.predict_proba(X_test)[:,1]
-        auc=roc_auc_score(y_true=y_test, y_score=predictions)
+        try:
+            auc=roc_auc_score(y_true=y_test, y_score=predictions)
+        except ValueError:
+            print("Exception in roc_auc_score(): trying to ignore")
+            auc = 0
         auc_list.append(auc)
 
     return sum(auc_list)/len(auc_list)    
@@ -277,11 +287,24 @@ def convert_items_n_labitems(features_list, conversion_tables_address):
 def convert_numbers_to_names(features_list, conversion_tables_address):
     return convert_ICD9_codes(convert_items_n_labitems(features_list, conversion_tables_address), conversion_tables_address)
 
+
+# 
+# Coarsens the ICD codes to a higher level
+# by dropping the last code digit - but, it looks like there may be some
+# issues with the original code as it treats the ICD codes as numbers rather
+# than strings and so doesn't take into account the semantically meaningful
+# leading and trailing zeros.
+#
 def ICD9_categorizer(X):
+    # Get a list of the ICD columns in input X
     ICD9_COLUMN_NAMES=[col for col in X.columns if str(col).startswith('ICD9_')]
+
+    # Make a DF that holds the ICD codes only for input X (?)
     ICD9_categorized=pd.DataFrame(index=range(0,len(X)), columns=['ICD9_'+str(x) for x in range(0,1000)]).fillna(0)
 
+    # For each ICD column name:
     for ICD9_column_name in ICD9_COLUMN_NAMES:
+        # Discard the last digit in the code number by doing integer division by 10
         index=int(int(ICD9_column_name[5:])/10)
         FITTING_CATEGORY='ICD9_'+str(index)
         ICD9_categorized[FITTING_CATEGORY]=ICD9_categorized[FITTING_CATEGORY]+X[ICD9_column_name]

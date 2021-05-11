@@ -1,3 +1,5 @@
+# Authors: ?, T.J.Ashby
+
 import psycopg2
 import pandas as pd
 
@@ -13,7 +15,9 @@ class SQLConnection(object):
     def executeQuery(self, query):
         con = psycopg2.connect(dbname=self.dbname, user=self.user, host=self.host, port=self.port,password=self.password)
         cur = con.cursor()
-        cur.execute('SET search_path to {}'.format(self.schema))
+        # Minor addition to make handling of schemas work more smoothly
+        if self.schema != "":
+            cur.execute('SET search_path to {}'.format(self.schema))
         results = pd.read_sql_query(query, con)
         cur.close()
         con.close()
@@ -27,6 +31,10 @@ def clean_nan_columns(df, thres):
     :param thres:
     :return:
     """
+    #
+    # Threshold parameter passed into function (thres) is actually ignored here:
+    # looks like a fixed threshold of 60 is used
+    #
     nan_cols = df.isnull().sum() * 100 / df.shape[0]
     nan_cols_sorted = nan_cols.sort_values(ascending=False)
     df_cleaned = df.drop(list(nan_cols_sorted[nan_cols_sorted > 60].index), axis=1)
