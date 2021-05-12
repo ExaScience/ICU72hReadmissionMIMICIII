@@ -1,0 +1,24 @@
+name: ICU72hRA
+channels:
+  - defaults
+dependencies:
+  - yaml
+  - scikit-learn
+  - python=3.7.7
+  - xgboost
+  - r-essentials
+  - r-doparallel
+  - distributed
+  - r-base
+  - r-xgboost
+  - numpy
+  - pyyaml
+  - pandas
+  - conda-forge::asyncssh
+  - psycopg2
+  - matplotlib
+  - r-proc
+  - seaborn
+  - gensim
+  - smart_open
+prefix: /home/ashby/anaconda3/envs/ICU72hRA
