@@ -9,7 +9,7 @@ import pandas as pd
 import dask
 from dask import distributed
 
-import subset_data, generate_embeddings, patch_embeddings
+import subset_data
 import fold_saver
 
 
@@ -33,6 +33,21 @@ def doEthnicity(client, datadir, out):
 
     dfname = "df_MASTER_DATA_ethnicityWhite.csv"
 
+    #
+    # Prepare the data
+    #
+    if not (datadir / dfname).exists():
+        lg.info("Generate data for {}".format(dfname))
+        dforigname = "df_MASTER_DATA"
+        df_orig = pd.read_csv(datadir / f"{dforigname}.csv")
+        df = subset_data.splitByEthnicity(df_orig)
+
+        lg.info("Writing out data for {}".format(dfname))
+        df.to_csv(datadir / dfname, index=False)
+    else:
+        lg.info(f"{dfname} exits, reading it")
+        df = pd.read_csv(datadir / dfname)
+
     lg.info("Launch experiment {}".format(dfname))
 
     outdir = out / "subset_white"
@@ -48,6 +63,21 @@ def doEthnicity(client, datadir, out):
 def doInsurance(client, datadir, out):
 
     dfname = "df_MASTER_DATA_insuranceInsured.csv"
+
+    #
+    # Prepare the data
+    #
+    if not (datadir / dfname).exists():
+        lg.info("Generate data for {}".format(dfname))
+        dforigname = "df_MASTER_DATA"
+        df_orig = pd.read_csv(datadir / f"{dforigname}.csv")
+        df = subset_data.splitByInsurance(df_orig)
+
+        lg.info("Writing out data for {}".format(dfname))
+        df.to_csv(datadir / dfname, index=False)
+    else:
+        lg.info(f"{dfname} exits, reading it")
+        df = pd.read_csv(datadir / dfname)
 
     lg.info("Launch experiment {}".format(dfname))
 
@@ -109,6 +139,35 @@ def doPercs(client, datadir, out):
 def doSystem(client, datadir, out):
 
     dfname = "df_MASTER_DATA_systemCV.csv"
+
+    #
+    # Prepare the data
+    #
+    if not (datadir / dfname).exists():
+        lg.info("Generate data for {}".format(dfname))
+        dforigname = "df_MASTER_DATA"
+        df_orig = pd.read_csv(datadir / f"{dforigname}.csv")
+
+        df_eventscv = pd.read_csv(datadir / "INPUTEVENTS_CV.csv.gz")
+        df_eventsmv = pd.read_csv(datadir / "INPUTEVENTS_MV.csv.gz")
+        subj_cv = list(df_eventscv["SUBJECT_ID"].unique())
+        subj_mv = list(df_eventsmv["SUBJECT_ID"].unique())
+
+        df_subj = pd.DataFrame(data=set(subj_cv) | set(subj_mv),
+                               columns=["SUBJECT_ID"]).set_index("SUBJECT_ID")
+        df_subj.loc[:, 'CareVue'] = False
+        df_subj.loc[set(subj_cv), 'CareVue'] = True
+        df_subj.loc[:, 'MetaVision'] = False
+        df_subj.loc[set(subj_mv), 'MetaVision'] = True
+        df_subj = df_subj.reset_index()
+
+        df = subset_data.splitBySystem(df_orig, df_subj)
+
+        lg.info("Writing out data for {}".format(dfname))
+        df.to_csv(datadir / dfname, index=False)
+    else:
+        lg.info(f"{dfname} exits, reading it")
+        df = pd.read_csv(datadir / dfname)
 
     lg.info("Launch experiment {}".format(dfname))
 

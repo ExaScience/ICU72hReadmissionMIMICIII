@@ -50,22 +50,20 @@ def splitByInsurance(df_in):
     return df
 
 
-def splitBySystem(df_in, sys):
+def splitBySystem(df_in, df_subj2sys, sys="CareVue"):
 
     df = df_in.copy()
 
-    df_subj2sys = pd.read_csv("subject_system.csv")
-
-    #
     # Remove people in both systems
-    #
     n = len(df_subj2sys)
     df_subj2sys = df_subj2sys.query("~((MetaVision == True) & (CareVue == True))")
     lg.debug("Dropped {} subjects that cross systems".format(n - len(df_subj2sys)))
 
+    # Check all subjects are in at least one of the systems
     df_check = df_subj2sys.query("(MetaVision == False) & (CareVue == False)")
     assert len(df_check) < 1
 
+    # Get the overlap
     toGrab = set(df_subj2sys["SUBJECT_ID"]) & set(df["SUBJECT_ID"])
     lg.debug("Size of common set: {}".format(len(toGrab)))
     lg.debug(
@@ -74,6 +72,7 @@ def splitBySystem(df_in, sys):
         )
     )
 
+    # Select the subset based on system type (for overlap)
     df_subj2sys = df_subj2sys.set_index("SUBJECT_ID").loc[toGrab, :].reset_index()
     subj_A = df_subj2sys.loc[df_subj2sys[sys] == True, "SUBJECT_ID"]
     subj_B = df_subj2sys.loc[df_subj2sys[sys] == False, "SUBJECT_ID"]
