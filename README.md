@@ -43,14 +43,18 @@ The top level script and configuration file in this repository are:
         models1/experiments.py
         models1/experiments.yml
 
-1. Go to the *models1/* directory. First fill in the *experiments.yml* file appropriately and then launch the experiments with:
+1. Set the search path so Python can find the relevant files. On a Linux system this might look something like:
+
+        export PYTHONPATH="$PYTHONPATH:.:../generate_datasets"
+
+2. Go to the *models1/* directory. First fill in the *experiments.yml* file appropriately and then launch the experiments with:
 
         python experiments.py
 
-    Expected run time varies a large amount depending on the system being used and the experiments specified. The longer running experiments can easily take > 10 hours.
+    Expected run time varies a large amount depending on the system being used and the experiments specified. The longer running experiments can easily take 10s of hours to multiple days.
 
 
-2. (Optional) post process the experiments on percentage data splits by running:
+3. (Optional) post process the experiments on percentage data splits by running:
 
         python icu72hra_collectFigs.py experiments.yml
 
