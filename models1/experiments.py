@@ -1,5 +1,6 @@
 # Author: T.J. Ashby
 
+from asyncio import format_helpers
 import sys, os, subprocess
 from pathlib import Path
 import logging as lg
@@ -31,33 +32,42 @@ def doOriginal(client, datadir, out):
 
 def doEthnicity(client, datadir, out):
 
-    dfname = "df_MASTER_DATA_ethnicityWhite.csv"
+    dforigname = "df_MASTER_DATA"
+    df_orig = pd.read_csv(datadir / f"{dforigname}.csv")
+
+    dfstub = "df_MASTER_DATA_ethnicityWhite{}.csv"
+
+    eths = ["ALL", "BLACK", "HISPANIC"]
+    futs = []
+    lg.info(f"Splits to run: {eths}")
 
     #
     # Prepare the data
     #
-    if not (datadir / dfname).exists():
-        lg.info("Generate data for {}".format(dfname))
-        dforigname = "df_MASTER_DATA"
-        df_orig = pd.read_csv(datadir / f"{dforigname}.csv")
-        df = subset_data.splitByEthnicity(df_orig)
+    for e in eths:
+        dfname = dfstub.format(e)
+        if not (datadir / dfname).exists():
+            lg.info("Generate data for {}".format(dfname))
+            df = subset_data.splitByEthnicity(df_orig, e)
 
-        lg.info("Writing out data for {}".format(dfname))
-        df.to_csv(datadir / dfname, index=False)
-    else:
-        lg.info(f"{dfname} exits, reading it")
-        df = pd.read_csv(datadir / dfname)
+            lg.info("Writing out data for {}".format(dfname))
+            df.to_csv(datadir / dfname, index=False)
+        else:
+            lg.info(f"{dfname} exits, reading it")
+            df = pd.read_csv(datadir / dfname)
 
-    lg.info("Launch experiment {}".format(dfname))
+        lg.info("Launch experiment {}".format(dfname))
 
-    outdir = out / "subset_white"
-    os.makedirs(outdir, exist_ok=True)
+        outdir = out / "subset_ethn" / f"white_{e}"
+        os.makedirs(outdir, exist_ok=True)
 
-    fut = client.submit(fold_saver.main, *[dfname, datadir, outdir])
+        fut = client.submit(fold_saver.main, *[dfname, datadir, outdir])
 
-    lg.info("Experiment submitted")
+        lg.info("Experiment submitted")
 
-    return fut
+        futs.append(fut)
+
+    return futs
 
 
 def doInsurance(client, datadir, out):
@@ -124,7 +134,7 @@ def doPercs(client, datadir, out):
 
         lg.info("Launch experiment {}".format(dfname))
 
-        outdir = out / "perc_splits" / f"{fname}_{noDot}_perc"
+        outdir = out / f"{fname}_{noDot}_perc"
         os.makedirs(outdir, exist_ok=True)
 
         fut = client.submit(fold_saver.main, *[dfname, datadir, outdir])
@@ -183,37 +193,48 @@ def doSystem(client, datadir, out):
 
 def setupCluster(nodes):
 
-    try:
+    #
+    # Currently disabled due to problems probably caused by bugs in Dask, and
+    # the security hole. Can lead to hangs. Only try if you're brave and in a
+    # hurry.
+    #
+    useMultipleNodes = False
 
-        # Remove the first node, so it can act as a head node without getting
-        # overloaded and choking the parallel progress
-        headnode = True
-        if headnode:
-            headNode = nodes[0]
-            if len(nodes) > 1:
+    if useMultipleNodes:
+        try:
+
+            # Remove the first node, so it can act as a head node without getting
+            # overloaded and choking the parallel progress
+            headnode = True
+            if headnode:
+                headNode = nodes[0]
                 nodes = nodes[1:]
                 lg.info("Head node: {}".format(headNode))
 
-        lg.info("Dask node(s): {}".format(nodes))
+            lg.info("Dask node(s): {}".format(nodes))
 
-        #
-        # Blindly trusting the hosts is a work-around as I can't figure out how
-        # to do it properly. However, this is a SECURITY HOLE!
-        #
-        asyncssh_opts = {"known_hosts": None}
-        cluster = distributed.deploy.ssh.SSHCluster(
-            hosts=nodes, connect_options=asyncssh_opts
-        )
-        client = distributed.Client(cluster)
+            #
+            # Blindly trusting the hosts is a work-around as I can't figure out how
+            # to do it properly. However, this is a SECURITY HOLE! Only do this on a
+            # cluster that you completely trust.
+            # 
+            lg.warning("Using ssh cluster whilst trusting nodes - only do this on a cluster you really trust as this is a security hole")
+            asyncssh_opts = {"known_hosts": None}
+            cluster = distributed.deploy.ssh.SSHCluster(
+                hosts=nodes, connect_options=asyncssh_opts
+            )
+            client = distributed.Client(cluster)
 
-        lg.info("Distributed cluster set up with {} worker nodes".format(len(nodes)))
+            lg.info("Distributed cluster set up with {} worker nodes".format(len(nodes)))
 
-    except Exception as err:
-        lg.warning("Couldn't set up cluster: {}".format(err))
-        lg.warning("Are you running on the head node?")
-        client = distributed.Client(n_workers=4, threads_per_worker=1)
-        lg.info("Running locally")
+            return client
 
+        except Exception as err:
+            lg.info("Couldn't set up distributed cluster: {}".format(err))
+            lg.warning("(If you're on a cluster: are you running on the head node? If 'yes', then you probably shouldn't be)")
+
+    lg.info("Running locally")
+    client = distributed.Client(n_workers=4, threads_per_worker=1)
     return client
 
 
@@ -249,7 +270,7 @@ def doDask(nodes, config):
         futs.append(doOriginal(client, datadir, out))
 
     if "ethn" in experiments:
-        futs.append(doEthnicity(client, datadir, out))
+        futs += doEthnicity(client, datadir, out)
 
     if "sys" in experiments:
         futs.append(doSystem(client, datadir, out))

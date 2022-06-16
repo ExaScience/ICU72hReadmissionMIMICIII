@@ -2,6 +2,7 @@
 
 import sys, yaml
 import logging as lg
+from pathlib import Path
 
 import pandas as pd
 import numpy as np
@@ -23,16 +24,23 @@ def splitByPercentage(df_in, perc, seed=42):
     return df
 
 
-def splitByEthnicity(df_in):
+def splitByEthnicity(df_in, other="ALL"):
 
     df = df_in.copy()
+    df.loc[:, "Subset"] = "Remove"
 
     def white(e):
         # print(e[0:5])
         return e[0:5] == "WHITE"
 
     df.loc[df.loc[:, "ETHNICITY"].map(white) == True, "Subset"] = "A"
-    df.loc[df.loc[:, "ETHNICITY"].map(white) == False, "Subset"] = "B"
+ 
+    if other == "ALL":
+        df.loc[df.loc[:, "ETHNICITY"].map(white) == False, "Subset"] = "B"
+        assert (df["Subset"] == "Remove").any() == False
+    else:
+        df.loc[df.loc[:, "ETHNICITY"].map(lambda x: other in x), "Subset"] = "B"
+        df = df.query("Subset != 'Remove'")
 
     return df
 
