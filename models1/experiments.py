@@ -17,6 +17,8 @@ import fold_saver
 def doOriginal(client, datadir, out):
 
     dfname = "df_MASTER_DATA.csv"
+    df_orig = pd.read_csv(datadir / f"{dfname}")
+    lg.info(f"Number of original unique ICU stays: {len(df_orig['ICUSTAY_ID'].unique())}")
 
     lg.info("Launch experiment {}".format(dfname))
 
@@ -34,6 +36,8 @@ def doEthnicity(client, datadir, out):
 
     dforigname = "df_MASTER_DATA"
     df_orig = pd.read_csv(datadir / f"{dforigname}.csv")
+    lg.info(f"Number of original unique ICU stays: {len(df_orig['ICUSTAY_ID'].unique())}")
+
 
     dfstub = "df_MASTER_DATA_ethnicityWhite{}.csv"
 
@@ -55,6 +59,11 @@ def doEthnicity(client, datadir, out):
         else:
             lg.info(f"{dfname} exits, reading it")
             df = pd.read_csv(datadir / dfname)
+
+        icu_white = df[df["Subset"] == "A"]['ICUSTAY_ID'].unique()
+        lg.info(f"Number of WHITE unique ICU stays: {len(icu_white)}")
+        icu_other = df[df["Subset"] == "B"]['ICUSTAY_ID'].unique()
+        lg.info(f"Number of {e} unique ICU stays: {len(icu_other)}")
 
         lg.info("Launch experiment {}".format(dfname))
 
@@ -150,14 +159,16 @@ def doSystem(client, datadir, out):
 
     dfname = "df_MASTER_DATA_systemCV.csv"
 
+    dforigname = "df_MASTER_DATA"
+    df_orig = pd.read_csv(datadir / f"{dforigname}.csv")
+    lg.info(f"Number of original unique ICU stays: {len(df_orig['ICUSTAY_ID'].unique())}")
+
     #
     # Prepare the data
     #
     if not (datadir / dfname).exists():
         lg.info("Generate data for {}".format(dfname))
-        dforigname = "df_MASTER_DATA"
-        df_orig = pd.read_csv(datadir / f"{dforigname}.csv")
-
+        
         df_eventscv = pd.read_csv(datadir / "INPUTEVENTS_CV.csv.gz")
         df_eventsmv = pd.read_csv(datadir / "INPUTEVENTS_MV.csv.gz")
         subj_cv = list(df_eventscv["SUBJECT_ID"].unique())
@@ -178,6 +189,11 @@ def doSystem(client, datadir, out):
     else:
         lg.info(f"{dfname} exits, reading it")
         df = pd.read_csv(datadir / dfname)
+
+    icu_cv = df[df["Subset"] == "A"]['ICUSTAY_ID'].unique()
+    lg.info(f"Number of CV only unique ICU stays: {len(icu_cv)}")
+    icu_mv = df[df["Subset"] == "B"]['ICUSTAY_ID'].unique()
+    lg.info(f"Number of MV only unique ICU stays: {len(icu_mv)}")
 
     lg.info("Launch experiment {}".format(dfname))
 
